@@ -1,0 +1,57 @@
+name: Pages
+
+# Each release tag gets its own immutable folder, /<repo>/vX.Y.Z/; the site root
+# redirects to the newest. Manual runs publish the chosen ref to /<repo>/dev/
+# (or another non-release folder) for previews.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      folder:
+        description: "Folder to publish to (v* names are reserved for tags)"
+        default: dev
+
+permissions:
+  contents: write # pushes the gh-pages branch
+
+# Deploys commit to one branch; queue them rather than cancel or race.
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      # Tags and history so `git describe` in build.rs names the release.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: jetli/trunk-action@v0.5.1
+        with:
+          version: latest
+
+      # Inputs go through env, not ${{ }} in the script, to avoid shell injection.
+      - name: Choose folder
+        env:
+          INPUT_FOLDER: ${{ inputs.folder }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            folder="$GITHUB_REF_NAME"
+          else
+            folder="${INPUT_FOLDER:-dev}"
+            case "$folder" in v*) echo "v* folders are for release tags" >&2; exit 1;; esac
+          fi
+          echo "FOLDER=$folder" >> "$GITHUB_ENV"
+
+      - run: trunk build --release --public-url "/${GITHUB_REPOSITORY#*/}/$FOLDER/"
+
+      - run: scripts/publish-pages.sh dist "$FOLDER"

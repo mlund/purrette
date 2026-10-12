@@ -1,0 +1,55 @@
+[package]
+name = "eframe_wasm_template"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT OR Apache-2.0"
+description = "egui/eframe app that runs natively and in the browser via wasm"
+repository = "https://github.com/mlund/eframe-wasm-template"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+# Kebab-case keeps the bin output name distinct from the cdylib (wasm32 filename collision).
+[[bin]]
+name = "eframe-wasm-template"
+path = "src/main.rs"
+
+[features]
+default = ["plot"]
+plot = ["dep:egui_plot"]
+# WebGPU/wgpu renderer instead of glow; also exposes the wgpu device for compute.
+wgpu = ["eframe/wgpu"]
+
+[dependencies]
+# eframe defaults with glow instead of wgpu (the `wgpu` feature adds it back).
+eframe = { version = "0.36", default-features = false, features = [
+    "accesskit",
+    "default_fonts",
+    "glow",
+    "links",
+    "wayland",
+    "web_screen_reader",
+    "x11",
+] }
+egui = "0.36"
+egui_plot = { version = "0.37", optional = true }
+egui_logger = "0.12"
+log = "0.4"
+
+# If you add `rand`, also add `getrandom` with its wasm/JS backend here,
+# otherwise it panics in the browser for lack of an entropy source.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+console_error_panic_hook = "0.1"
+web-sys = { version = "0.3", features = ["Document", "Element", "HtmlCanvasElement", "Window"] }
+
+# Small wasm without measurable speed loss (measured in cppm-maker: 9.4 → 5.9 MB).
+# wasm-opt adds nothing on top once gzipped, so the build skips it.
+[profile.release]
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
+strip = true
+panic = "abort"
