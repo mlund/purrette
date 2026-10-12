@@ -2,29 +2,50 @@
 
 use web_time::Duration;
 
-use super::{conditions_ui, progress_ui, viewer};
+use super::{conditions_ui, progress_ui};
 use crate::app::Session;
 use crate::io::{self, Inbox};
 use crate::model::{
     Analysis, Conditions, ForceField, Policy, Properties, Scaling, Setup, default_pka, rcsb_url,
 };
+use crate::viewer::Viewer;
+use crate::viewer::scene::Scene;
 
 /// e·Å → Debye.
 const DEBYE_PER_EANGSTROM: f64 = 4.803_204;
 
-#[derive(Default)]
 pub struct StructureTab {
+    viewer: Viewer,
     pdb_id: String,
     analysis: Option<Analysis>,
     /// Inputs behind `analysis`, to flag results as stale after edits.
     ran_with: Option<(Setup, Vec<String>, Conditions)>,
     error: Option<String>,
+    /// Structure name and chains of the running analysis and of the shown view; equal
+    /// means the result is a recalculation and may keep the view.
+    running: Option<(String, Vec<String>)>,
+    shown: Option<(String, Vec<String>)>,
 }
 
 impl StructureTab {
+    pub fn new(viewer: Viewer) -> Self {
+        Self {
+            viewer,
+            pdb_id: String::new(),
+            analysis: None,
+            ran_with: None,
+            error: None,
+            running: None,
+            shown: None,
+        }
+    }
+
     /// New structure: compute straight away so results appear without a click.
     pub fn loaded(&mut self, session: &Session) {
         self.error = None;
+        // The old molecule must not linger (or answer hovers) while the new one computes.
+        self.viewer.clear();
+        self.shown = None;
         self.run(session);
     }
 
@@ -37,12 +58,32 @@ impl StructureTab {
         let Some(analysis) = &mut self.analysis else {
             return false;
         };
+        let was_running = analysis.is_running();
         match analysis.advance(budget) {
-            Ok(done) => done.is_none(),
+            Ok(Some(properties)) => {
+                if was_running {
+                    let recalculation = self.shown.is_some() && self.shown == self.running;
+                    match Scene::new(properties.scene_input()) {
+                        Ok(scene) => {
+                            self.viewer.set_scene(scene, recalculation);
+                            self.shown = self.running.clone();
+                        }
+                        Err(e) => {
+                            log::warn!("3D view: {e}");
+                            self.viewer.clear();
+                            self.shown = None;
+                        }
+                    }
+                }
+                false
+            }
+            Ok(None) => true,
             Err(e) => {
                 log::error!("{e}");
                 self.error = Some(e);
                 self.analysis = None;
+                self.viewer.clear();
+                self.shown = None;
                 false
             }
         }
@@ -56,6 +97,7 @@ impl StructureTab {
         match Analysis::start(structure, &session.setup, &chains, session.conditions) {
             Ok(a) => {
                 self.analysis = Some(a);
+                self.running = Some((structure.name().to_owned(), chains.clone()));
                 self.ran_with = Some((session.setup.clone(), chains, session.conditions));
                 self.error = None;
             }
@@ -81,7 +123,7 @@ impl StructureTab {
             egui::Panel::top("properties").show(ui, |ui| {
                 properties_ui(ui, properties, self.is_stale(session));
             });
-            egui::CentralPanel::default().show(ui, |ui| viewer::ui(ui, properties));
+            egui::CentralPanel::default().show(ui, |ui| self.viewer.show(ui));
         });
     }
 

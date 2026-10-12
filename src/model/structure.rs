@@ -1,7 +1,9 @@
 //! A loaded protein structure, kept as raw bytes so it can be re-coarse-grained
 //! when the policy or chain selection changes.
 
-use cgkitten::{Bead, MultiBead, coarse_grain_bytes, filter_chains};
+use std::sync::Arc;
+
+use cgkitten::{Atom, Bead, atoms_bytes, coarse_grain_bytes, filter_chains};
 
 use super::setup::Policy;
 
@@ -10,20 +12,34 @@ pub struct Structure {
     name: String,
     data: Vec<u8>,
     chains: Vec<String>,
+    /// Parsed once and shared: large assemblies have ~10⁵ atoms, and every
+    /// recalculation and view uses them.
+    atoms: Arc<[Atom]>,
 }
 
 impl Structure {
     /// Parse PDB or mmCIF (detected from content); fails if no residues are found.
     pub fn parse(name: impl Into<String>, data: Vec<u8>) -> Result<Self, String> {
         let name = name.into();
-        let beads = coarse_grain_bytes(&data, &MultiBead);
-        if beads.is_empty() {
+        // Chains from the atoms of amino acids (what becomes beads), so the file is
+        // parsed once here; coarse-graining runs per calculation.
+        let atoms: Arc<[Atom]> = atoms_bytes(&data).into();
+        let mut chains: Vec<String> = atoms
+            .iter()
+            .filter(|a| cgkitten::residue::is_amino_acid(&a.res_name))
+            .map(|a| a.chain_id.clone())
+            .collect();
+        if chains.is_empty() {
             return Err(format!("{name}: no protein residues found"));
         }
-        let mut chains: Vec<String> = beads.into_iter().map(|b| b.chain_id).collect();
         chains.sort_unstable();
         chains.dedup();
-        Ok(Self { name, data, chains })
+        Ok(Self {
+            name,
+            data,
+            chains,
+            atoms,
+        })
     }
 
     /// File name, e.g. `2CDS.cif`.
@@ -52,6 +68,20 @@ impl Structure {
             return Err("no residues in the selected chains".into());
         }
         Ok(beads)
+    }
+}
+
+impl Structure {
+    /// All-atom records of the selected chains (all when `chains` is empty).
+    pub(crate) fn atoms(&self, chains: &[String]) -> Arc<[Atom]> {
+        if chains.is_empty() {
+            return Arc::clone(&self.atoms);
+        }
+        self.atoms
+            .iter()
+            .filter(|a| chains.contains(&a.chain_id))
+            .cloned()
+            .collect()
     }
 }
 

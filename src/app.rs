@@ -5,6 +5,7 @@ use web_time::Duration;
 use crate::io::Inbox;
 use crate::model::{Conditions, Setup, Structure};
 use crate::ui::{ScanTab, StructureTab};
+use crate::viewer::Viewer;
 
 /// Compute budget per job and frame; two jobs still leave room for 60 Hz drawing.
 const FRAME_BUDGET: Duration = Duration::from_millis(7);
@@ -83,7 +84,7 @@ impl App {
             tab: Tab::Structure,
             session: Session::default(),
             inbox: Inbox::default(),
-            structure_tab: StructureTab::default(),
+            structure_tab: StructureTab::new(Viewer::new(cc)),
             scan_tab: ScanTab::default(),
             show_log: false,
         }

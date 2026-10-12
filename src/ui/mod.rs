@@ -2,7 +2,6 @@
 
 mod scan_tab;
 mod structure_tab;
-mod viewer;
 
 pub use scan_tab::ScanTab;
 pub use structure_tab::StructureTab;

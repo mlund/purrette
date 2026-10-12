@@ -8,6 +8,9 @@ mod app;
 mod io;
 pub mod model;
 mod ui;
+mod viewer;
+
+pub use viewer::DEPTH_BITS;
 
 pub use app::App;
 
@@ -60,6 +63,7 @@ pub fn start() -> Result<(), JsValue> {
 
     let options = eframe::WebOptions {
         renderer: RENDERER,
+        depth_buffer: DEPTH_BITS,
         ..Default::default()
     };
     wasm_bindgen_futures::spawn_local(async move {

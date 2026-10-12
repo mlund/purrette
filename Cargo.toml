@@ -38,6 +38,10 @@ egui_logger = "0.12"
 log = "0.4"
 cgkitten = { git = "https://github.com/mlund/cgkitten.git", default-features = false }
 rfd = "0.17"
+bytemuck = { version = "1", features = ["derive"] }
+glam = "0.30"
+# Neighbour queries for the vendored surface mesher.
+kdtree = "0.8"
 # std::time::Instant panics on wasm32-unknown-unknown.
 web-time = "1"
 

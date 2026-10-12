@@ -6,6 +6,7 @@ fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([1024.0, 720.0]),
         renderer: RENDERER,
+        depth_buffer: purrette::DEPTH_BITS,
         ..Default::default()
     };
     eframe::run_native(TITLE, options, Box::new(|cc| Ok(Box::new(App::new(cc)))))

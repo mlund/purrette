@@ -11,6 +11,7 @@ use super::{SEED, advance_for};
 /// A running or finished calculation.
 pub struct Analysis {
     beads: Vec<Bead>,
+    atoms: std::sync::Arc<[cgkitten::Atom]>,
     setup: Setup,
     conditions: Conditions,
     name: String,
@@ -39,11 +40,22 @@ pub struct Properties {
     pub topology: String,
     /// Base name for saved files.
     pub stem: String,
-    // Kept for the 3D viewer: per-bead positions, charge variance and snapshots.
-    #[allow(dead_code)]
     beads: Vec<Bead>,
-    #[allow(dead_code)]
+    atoms: std::sync::Arc<[cgkitten::Atom]>,
     charges: ChargeResult,
+}
+
+impl Properties {
+    /// What the 3D viewer needs from this result.
+    pub fn scene_input(&self) -> crate::viewer::scene::SceneInput {
+        crate::viewer::scene::SceneInput {
+            beads: self.beads.clone(),
+            charge_variance: self.charges.charge_variance.clone(),
+            atoms: std::sync::Arc::clone(&self.atoms),
+            bjerrum_length: cgkitten::bjerrum_length(self.conditions.temperature),
+            debye_length: cgkitten::debye_length(self.conditions.temperature, self.conditions.salt),
+        }
+    }
 }
 
 impl Analysis {
@@ -56,9 +68,11 @@ impl Analysis {
         let calc = setup.charge_calc(conditions)?;
         setup.force_field()?; // fail now, not after the titration
         let beads = structure.beads(setup.policy, chains)?;
+        let atoms = structure.atoms(chains);
         Ok(Self {
             state: State::Running(calc.start(&beads, SEED)),
             beads,
+            atoms,
             setup: setup.clone(),
             conditions,
             name: structure.name().to_owned(),
@@ -131,6 +145,7 @@ impl Analysis {
             topology,
             stem: self.stem.clone(),
             beads: charged,
+            atoms: std::sync::Arc::clone(&self.atoms),
             charges,
         })
     }
