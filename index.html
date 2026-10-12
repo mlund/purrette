@@ -111,11 +111,18 @@
                 getJson("../versions.json"),
             ]);
             if (info) {
+                // A pinned commit names the exact code; the version alone may not, between
+                // cgkitten releases.
+                const rev = info.cgkitten_rev;
                 const cgkitten = document.createElement("a");
-                cgkitten.href = `https://github.com/mlund/cgkitten/releases/tag/v${info.cgkitten}`;
+                cgkitten.href = rev
+                    ? `https://github.com/mlund/cgkitten/tree/${rev}`
+                    : `https://github.com/mlund/cgkitten/releases/tag/v${info.cgkitten}`;
                 cgkitten.target = "_blank";
                 cgkitten.rel = "noopener";
-                cgkitten.textContent = `cgkitten ${info.cgkitten}`;
+                cgkitten.textContent = rev
+                    ? `cgkitten ${info.cgkitten} (${rev.slice(0, 7)})`
+                    : `cgkitten ${info.cgkitten}`;
                 document.getElementById("build").replaceChildren(`${info.web} · `, cgkitten);
             }
 

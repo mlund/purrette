@@ -62,9 +62,13 @@ jobs:
       # Read by the HTML header, which must work without the wasm app.
       - name: Write build-info.json
         run: |
-          cgkitten=$(cargo metadata --format-version 1 --locked | jq -r '.packages[] | select(.name == "cgkitten") | .version')
+          package=$(cargo metadata --format-version 1 --locked | jq -c '.packages[] | select(.name == "cgkitten")')
+          cgkitten=$(echo "$package" | jq -r .version)
           test -n "$cgkitten"
-          jq -n --arg web "$GITHUB_REF_NAME" --arg cgkitten "$cgkitten" '{web: $web, cgkitten: $cgkitten}' > dist/build-info.json
+          # The pinned commit, since a git dependency may sit between releases.
+          rev=$(echo "$package" | jq -r .source | sed -n 's/.*#//p')
+          jq -n --arg web "$GITHUB_REF_NAME" --arg cgkitten "$cgkitten" --arg rev "$rev" \
+            '{web: $web, cgkitten: $cgkitten, cgkitten_rev: $rev}' > dist/build-info.json
           cat dist/build-info.json
 
       - name: Attach build to release
