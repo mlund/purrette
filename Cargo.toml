@@ -1,6 +1,6 @@
 [package]
 name = "purrette"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.95"
 license = "MIT OR Apache-2.0"
@@ -36,7 +36,7 @@ egui = "0.36"
 egui_plot = { version = "0.37", optional = true }
 egui_logger = "0.12"
 log = "0.4"
-cgkitten = { git = "https://github.com/mlund/cgkitten.git", default-features = false }
+cgkitten = { version = "0.4.0", default-features = false }
 rfd = "0.17"
 bytemuck = { version = "1", features = ["derive"] }
 glam = "0.30"
