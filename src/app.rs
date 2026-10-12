@@ -1,147 +1,153 @@
-use std::collections::VecDeque;
+use std::collections::BTreeSet;
 
-use crate::model::Oscillator;
+use web_time::Duration;
 
-/// Integration step; well below 1/ω for the slider range.
-const DT: f64 = 1e-3;
-/// Points kept for the plot; older ones scroll out.
-const HISTORY: usize = 2000;
+use crate::io::Inbox;
+use crate::model::{Conditions, Setup, Structure};
+use crate::ui::{ScanTab, StructureTab};
+
+/// Compute budget per job and frame; two jobs still leave room for 60 Hz drawing.
+const FRAME_BUDGET: Duration = Duration::from_millis(7);
+
+/// Inputs shared by both tabs: the scan reuses what the structure tab set up.
+#[derive(Default)]
+pub struct Session {
+    pub structure: Option<Structure>,
+    /// Chains the user ticked.
+    pub selected: BTreeSet<String>,
+    pub setup: Setup,
+    pub conditions: Conditions,
+}
+
+impl Session {
+    /// Selected chains; empty means all, which keeps file headers short.
+    pub fn chains(&self) -> Vec<String> {
+        match &self.structure {
+            Some(s) if self.selected.len() < s.chains().len() => {
+                self.selected.iter().cloned().collect()
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    fn load(&mut self, name: String, data: Vec<u8>) -> Result<(), String> {
+        let structure = Structure::parse(name, data)?;
+        log::info!(
+            "loaded {} (chains {})",
+            structure.name(),
+            structure.chains().join(", ")
+        );
+        self.selected = structure.chains().iter().cloned().collect();
+        self.structure = Some(structure);
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Tab {
+    Structure,
+    Scan,
+}
 
 pub struct App {
-    omega: f64,
-    zeta: f64,
-    running: bool,
+    tab: Tab,
+    session: Session,
+    inbox: Inbox,
+    structure_tab: StructureTab,
+    scan_tab: ScanTab,
     show_log: bool,
-    oscillator: Oscillator,
-    history: VecDeque<[f64; 2]>,
 }
 
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        // GPU compute hook: device and queue are available here when built with `wgpu`.
+        // The 3D viewer will take device and queue from here.
         #[cfg(feature = "wgpu")]
         if let Some(rs) = &cc.wgpu_render_state {
             log::info!("wgpu adapter: {:?}", rs.adapter.get_info().name);
         }
-        #[cfg(not(feature = "wgpu"))]
-        let _ = cc;
 
-        log::info!("{} {}", crate::TITLE, crate::provenance());
-        let (omega, zeta) = (2.0, 0.1);
+        // egui's proportional font lacks ⟨ ⟩ ‖; the bundled monospace Hack has them.
+        let mut fonts = egui::FontDefinitions::default();
+        if let Some(family) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
+            family.push("Hack".to_owned());
+        }
+        cc.egui_ctx.set_fonts(fonts);
+
+        log::info!(
+            "{} {} (cgkitten {})",
+            crate::TITLE,
+            crate::provenance(),
+            cgkitten::VERSION
+        );
         Self {
-            omega,
-            zeta,
-            running: true,
+            tab: Tab::Structure,
+            session: Session::default(),
+            inbox: Inbox::default(),
+            structure_tab: StructureTab::default(),
+            scan_tab: ScanTab::default(),
             show_log: false,
-            oscillator: Oscillator::new(omega, zeta).expect("defaults are valid"),
-            history: VecDeque::with_capacity(HISTORY),
         }
     }
 
-    fn restart(&mut self) {
-        match Oscillator::new(self.omega, self.zeta) {
-            Ok(osc) => {
-                self.oscillator = osc;
-                self.history.clear();
+    fn receive(&mut self, ctx: &egui::Context) {
+        self.inbox.take_dropped(ctx);
+        while let Some(loaded) = self.inbox.poll() {
+            match loaded.and_then(|(name, data)| self.session.load(name, data)) {
+                Ok(()) => {
+                    self.scan_tab.clear();
+                    self.structure_tab.loaded(&self.session);
+                }
+                Err(e) => {
+                    log::error!("{e}");
+                    self.structure_tab.set_error(e);
+                }
             }
-            Err(err) => log::warn!("{err}"),
         }
     }
 
-    /// Advances by the frame time so speed is independent of frame rate.
-    fn advance(&mut self, frame_dt: f64) {
-        let steps = (frame_dt / DT).round() as usize;
-        for _ in 0..steps {
-            self.oscillator.step(DT);
-        }
-        if self.history.len() == HISTORY {
-            self.history.pop_front();
-        }
-        self.history
-            .push_back([self.oscillator.time(), self.oscillator.position()]);
-    }
-
-    fn controls(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Oscillator");
-        let mut changed = false;
-        changed |= ui
-            .add(egui::Slider::new(&mut self.omega, 0.1..=10.0).text("ω"))
-            .on_hover_text("Angular frequency of the undamped oscillator")
-            .changed();
-        changed |= ui
-            .add(egui::Slider::new(&mut self.zeta, 0.0..=2.0).text("ζ"))
-            .on_hover_text("Damping ratio: < 1 underdamped, 1 critical, > 1 overdamped")
-            .changed();
-        if changed {
-            self.restart();
-        }
-
+    fn top_bar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            let label = if self.running { "⏸ Pause" } else { "▶ Run" };
-            if ui
-                .button(label)
-                .on_hover_text("Pause or resume time")
-                .clicked()
-            {
-                self.running = !self.running;
-            }
-            if ui
-                .button("⟲ Reset")
-                .on_hover_text("Restart from x = 1")
-                .clicked()
-            {
-                self.restart();
-            }
+            ui.selectable_value(&mut self.tab, Tab::Structure, "🔬 Structure")
+                .on_hover_text("Load a structure and compute its charge properties");
+            ui.add_enabled_ui(self.session.structure.is_some(), |ui| {
+                ui.selectable_value(&mut self.tab, Tab::Scan, "📈 Scan")
+                    .on_hover_text(
+                        "Charge, capacitance, dipole and quadrupole vs pH, salt or temperature",
+                    )
+                    .on_disabled_hover_text("Load a structure first");
+            });
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.toggle_value(&mut self.show_log, "📜 Log")
+                    .on_hover_text("Show log messages");
+                ui.label(egui::RichText::new(crate::provenance()).weak())
+                    .on_hover_text(format!(
+                        "Purrette version (git revision); cgkitten {}",
+                        cgkitten::VERSION
+                    ));
+            });
         });
-
-        ui.separator();
-        ui.toggle_value(&mut self.show_log, "📜 Log")
-            .on_hover_text("Show log messages");
-
-        ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-            #[cfg(target_arch = "wasm32")]
-            ui.hyperlink_to("All versions", "../versions.html")
-                .on_hover_text("Run an older release, e.g. to reproduce results");
-            ui.label(crate::provenance())
-                .on_hover_text("Version (git revision) of this build");
-        });
-    }
-
-    #[cfg(feature = "plot")]
-    fn plot(&self, ui: &mut egui::Ui) {
-        use egui_plot::{Line, Plot, PlotPoints};
-        let points: PlotPoints = self.history.iter().copied().collect();
-        Plot::new("trajectory")
-            .x_axis_label("t")
-            .y_axis_label("x")
-            .include_y(-1.0)
-            .include_y(1.0)
-            .show(ui, |plot_ui| plot_ui.line(Line::new("x(t)", points)));
-    }
-
-    #[cfg(not(feature = "plot"))]
-    fn plot(&self, ui: &mut egui::Ui) {
-        ui.label(format!(
-            "t = {:.2}, x = {:+.4}  (build with `plot` feature for a graph)",
-            self.oscillator.time(),
-            self.oscillator.position()
-        ));
     }
 }
 
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        if self.running {
-            let dt = ui.input(|i| i.stable_dt) as f64;
-            self.advance(dt);
-            ui.ctx().request_repaint();
-        }
+        let ctx = ui.ctx().clone();
+        self.receive(&ctx);
 
-        egui::Panel::left("controls").show(ui, |ui| self.controls(ui));
-        egui::CentralPanel::default().show(ui, |ui| self.plot(ui));
+        egui::Panel::top("tabs").show(ui, |ui| self.top_bar(ui));
+        match self.tab {
+            Tab::Structure => self.structure_tab.ui(ui, &mut self.session, &self.inbox),
+            Tab::Scan => self.scan_tab.ui(ui, &mut self.session),
+        }
+        // Jobs keep running while the other tab is shown.
+        let structure_busy = self.structure_tab.advance(FRAME_BUDGET);
+        let scan_busy = self.scan_tab.advance(FRAME_BUDGET);
+        if structure_busy || scan_busy {
+            ctx.request_repaint();
+        }
 
         egui::Window::new("Log")
             .open(&mut self.show_log)
-            .show(ui.ctx(), |ui| egui_logger::logger_ui().show(ui));
+            .show(&ctx, |ui| egui_logger::logger_ui().show(ui));
     }
 }

@@ -1,15 +1,18 @@
-//! egui app that runs natively and in the browser.
+//! Protein charge properties vs pH, salt and temperature, natively and in the browser.
 //!
-//! Domain logic lives in [`model`]; `app` is a thin UI over it. Browser builds
-//! enter through [`start`], which wasm-bindgen calls on module load.
+//! Domain logic lives in [`model`] (on top of cgkitten); `app` and `ui` are a thin
+//! UI over it. Browser builds enter through [`start`], which wasm-bindgen calls on
+//! module load.
 
 mod app;
+mod io;
 pub mod model;
+mod ui;
 
 pub use app::App;
 
 /// Window/tab title, also used by the native runner.
-pub const TITLE: &str = "eframe wasm template";
+pub const TITLE: &str = "Purrette";
 
 /// Crate version and git revision, e.g. `0.1.0 (v0.1.0-3-gabc123d-dirty)`.
 /// Show it wherever results leave the app, so they can be reproduced.

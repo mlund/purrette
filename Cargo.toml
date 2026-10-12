@@ -1,22 +1,22 @@
 [package]
-name = "eframe_wasm_template"
+name = "purrette"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.95"
 license = "MIT OR Apache-2.0"
-description = "egui/eframe app that runs natively and in the browser via wasm"
-repository = "https://github.com/mlund/eframe-wasm-template"
+description = "Protein charge, capacitance and multipoles vs pH, salt and temperature, in the browser"
+repository = "https://github.com/mlund/purrette"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-# Kebab-case keeps the bin output name distinct from the cdylib (wasm32 filename collision).
+# Distinct from the cdylib name, or the wasm32 outputs collide.
 [[bin]]
-name = "eframe-wasm-template"
+name = "purrette-desktop"
 path = "src/main.rs"
 
 [features]
-default = ["plot"]
+default = ["plot", "wgpu"]
 plot = ["dep:egui_plot"]
 # WebGPU/wgpu renderer instead of glow; also exposes the wgpu device for compute.
 wgpu = ["eframe/wgpu"]
@@ -36,14 +36,32 @@ egui = "0.36"
 egui_plot = { version = "0.37", optional = true }
 egui_logger = "0.12"
 log = "0.4"
+cgkitten = { git = "https://github.com/mlund/cgkitten.git", default-features = false }
+rfd = "0.17"
+# std::time::Instant panics on wasm32-unknown-unknown.
+web-time = "1"
 
-# If you add `rand`, also add `getrandom` with its wasm/JS backend here,
-# otherwise it panics in the browser for lack of an entropy source.
+# cgkitten pulls in rand 0.8, whose getrandom needs the JS entropy backend in the browser.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }
+js-sys = "0.3"
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 console_error_panic_hook = "0.1"
-web-sys = { version = "0.3", features = ["Document", "Element", "HtmlCanvasElement", "Window"] }
+web-sys = { version = "0.3", features = [
+    "Blob",
+    "BlobPropertyBag",
+    "Document",
+    "Element",
+    "HtmlAnchorElement",
+    "HtmlCanvasElement",
+    "Response",
+    "Url",
+    "Window",
+] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+ureq = "3"
 
 # Small wasm without measurable speed loss (measured in cppm-maker: 9.4 → 5.9 MB).
 # wasm-opt adds nothing on top once gzipped, so the build skips it.

@@ -3,22 +3,6 @@
 Applies to all coding agents (Claude Code, Codex, ...). `.claude/CLAUDE.md` is a symlink to this file.
 Read it as a skill: the rules below always apply, and the *Recipes* say how to add common features when asked.
 
-<!-- template:start -->
-## New project from this template
-
-If `Cargo.toml` still says `name = "eframe_wasm_template"`, the repo was just created
-from the template. Before anything else, ask the user for a crate name and title, then run:
-
-```sh
-scripts/rename.sh <snake_case_crate_name> "<App Title>"
-```
-
-It renames the crate, lib and bin, the repo slug in URLs, and the title in
-`src/lib.rs` and `index.html`. It also removes this section and the template notes in
-`README.md`, then deletes itself. Replace the demo `src/model/` with the real domain module,
-and rewrite `README.md` for the new app.
-<!-- template:end -->
-
 Upon startup, load these two skills:
 
 - Deep modules: https://deepwiki.com/mattpocock/skills/4.1.4-designing-deep-modules
@@ -28,8 +12,11 @@ Upon startup, load these two skills:
 
 - `src/lib.rs`: wasm entry (`start`), logging, renderer choice, `provenance()`.
 - `src/main.rs`: native entry.
-- `src/app.rs`: the egui UI. Keep it thin: it reads and drives the domain module, holds no domain logic.
-- `src/model/`: domain logic, testable without a UI. Replace the demo oscillator with the real model.
+- `src/app.rs`: tab switching and the `Session` (structure, chains, setup, conditions) shared by both tabs.
+- `src/ui/`: one module per tab, plus `viewer.rs` (3D placeholder filling the structure tab's centre). Thin: no domain logic.
+- `src/io.rs`: platform glue (RCSB fetch, file dialog, drag-and-drop, save).
+- `src/model/`: domain logic on top of cgkitten, testable without a UI. Jobs (`Analysis`, `Scan`) advance in
+  time-boxed chunks, so the single browser thread keeps drawing.
 - `build.rs`: embeds `git describe` as `GIT_REVISION`.
 
 ## Design

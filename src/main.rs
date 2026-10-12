@@ -1,8 +1,8 @@
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
-    use eframe_wasm_template::{App, RENDERER, TITLE};
+    use purrette::{App, RENDERER, TITLE};
 
-    eframe_wasm_template::init_logging();
+    purrette::init_logging();
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([1024.0, 720.0]),
         renderer: RENDERER,
