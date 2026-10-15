@@ -7,6 +7,10 @@ license = "MIT OR Apache-2.0"
 description = "Protein charge, capacitance and multipoles vs pH, salt and temperature, in the browser"
 repository = "https://github.com/mlund/purrette"
 
+# Own workspace root, so a checkout nested in another workspace still uses this
+# Cargo.lock, the one CI builds with `--locked`.
+[workspace]
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 
