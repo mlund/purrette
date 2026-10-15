@@ -43,9 +43,11 @@ fn fs_main(v: VertexOut) -> @location(0) vec4<f32> {
     let shade = 0.35 + 0.65 * diffuse;
     var rgb = v.color.rgb * shade;
     // Iso-lines at integer contour values, about a pixel wide at any zoom.
+    // Derivatives must be taken outside the branch: Chrome rejects them in
+    // non-uniform control flow, invalidating the whole frame.
+    let width = max(fwidth(v.contour), 1e-6);
     if (v.contour > -1e29) {
         let distance = abs(fract(v.contour + 0.5) - 0.5);
-        let width = max(fwidth(v.contour), 1e-6);
         let line = 1.0 - smoothstep(0.5 * width, 1.5 * width, distance);
         rgb = mix(rgb, vec3<f32>(1.0), 0.8 * line);
     }
